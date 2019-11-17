@@ -1,13 +1,3 @@
-# this way to calculate % of total works when data is aggregated
-# my.df$Pct <- my.df$Total.Count / sum(my.df$Total.Count)
-# # set the name we want to a column ColumnOldName
-# names(df)[names(df) == 'ColumnOldName'] <- 'ColumnNewName'
-# # introduce "Manufacturer.Share" column, set values to 0 by default
-# df$Manufacturer.Share = 0
-# for (i in 1:nrow(df))
-# 	df$Manufacturer.Share[i] = df$Manufacturer.Listing.Count[i]/nrow(df)
-
-
 # set working directory
 setwd("ism6137")
 
@@ -34,7 +24,7 @@ for (i in 1:nrow(df))
 
 # now define Regions using State values
 # note that the state values in Python produced output were analyzed first, then decision was made to assign according to rules below
-# Pacific Coast: CA, OR, WA
+# Pacific: CA, OR, WA
 # Great Lakes: MI, WI, IL, IN
 # North East: MA, NY, NJ, CT, MD, DE, DC, VA, RI, NH, MD, PA
 # South East: FL, GA, SC, NC, AL
@@ -44,7 +34,7 @@ df$Region = "Other"
 for (i in 1:nrow(df))
 {
 	if ( df$State[i] == "CA" | df$State[i] == "OR" | df$State[i] == "WA" )
-		df$Region[i] = "Pacific Coast"
+		df$Region[i] = "Pacific"
 	else if ( df$State[i] == "MI" | df$State[i] == "WI" | df$State[i] == "IL" | df$State[i] == "IN" )
 		df$Region[i] = "Great Lakes"
 	else if ( df$State[i] == "MA" | df$State[i] == "NY" | df$State[i] == "NJ" | df$State[i] == "CT" | df$State[i] == "MA" | df$State[i] == "VA" | df$State[i] == "DE" | df$State[i] == "RI" | df$State[i] == "DC" | df$State[i] == "NH" | df$State[i] == "MD" | df$State[i] == "PA")
@@ -64,45 +54,37 @@ library(data.table)
 # load the current data frame in a new data.table
 dt = data.table(df)
 
-# now using data.table method to calculate count for each label in a column
-# Seller Listing Count on a Region level
-dt[ , Seller.Listing.Count:= .N, by = list(Seller.ID, Region)]
-# 
+# now we can use data.table methods to calculate count for each label in a column
+# Seller Listing Count 
 dt[ , Seller.Listing.Count:= .N, by = list(Seller.ID)]
-# Manufacture Count on the whole data
+# using data.table to calculate Seller's market share %
+dt[ , Seller.Market.Share:= .N/nrow(dt), by = list(Seller.ID)]
+# Manufacturer Listing Count
 dt[ , Manufacturer.Listing.Count:= .N, by = list(Manufacturer)]
-# using data.table to Manufacturer's market share %
+# using data.table to get Manufacturer's market share %
 dt[ , Manufacturer.Market.Share:= .N/nrow(dt), by = list(Manufacturer)]
-# in order to calculate Seller share, we need to know how many listings per Region there is:
-# dt[ , Region.Listing.Count:= .N, by = list(Region)]
-# now we can loop through the data table and calculate % seller in Region (I'm sure there's better way to do it, but this one works okay)
-# dt$Seller.Market.Share = 0
-# for (i in 1:nrow(dt))
-# 	dt$Seller.Market.Share[i] = dt$Seller.Listing.Count[i] / dt$Region.Listing.Count[i]
-# we can add "Big Brand" dummy variable now
-# manufacturers with more than 5% market share are "Big Brand" = 1, else = 0
-dt$Dummy.Big.Brand <- ifelse(dt$Manufacturer.Market.Share>=0.05, 1, 0)
-# to define top sellers in Region, I picked the following thresholds per Region (after the data was reviewed):
-# Great Lakes > 2.5%, Pacific Coast and Other > 2%, North Atlantic > 1.5%, Florida > 1.2%
-# for (i in 1:nrow(dt))
-# {
-# 	if (dt$Region[i] == "Great Lakes" && dt$Seller.Market.Share[i] >= 0.025)
-# 		dt$Dummy.Top.Regional.Seller[i] = 1
-# 	else if ((dt$Region[i] == "Pacific Coast" | dt$Region[i] == "Other") && dt$Seller.Market.Share[i] >= 0.02)
-# 		dt$Dummy.Top.Regional.Seller[i] = 1
-# 	else if (dt$Region[i] == "North Atlantic" && dt$Seller.Market.Share[i] >= 0.015)
-# 		dt$Dummy.Top.Regional.Seller[i] = 1
-# 	else if (dt$Region[i] == "Florida" && dt$Seller.Market.Share[i] >= 0.012)
-# 		dt$Dummy.Top.Regional.Seller[i] = 1
-# 	else
-# 		dt$Dummy.Top.Regional.Seller[i] = 0
-# }
+
+# now we can add "Big Brand" dummy variable
+# after analyzing the output data and manufacturer listing count, I've decided to use 3% threshold to define Big Brand (instead of 5%)
+# manufacturers with more than 3% market share are "Big Brand" = 1, else = 0
+dt$Dummy.Big.Brand <- ifelse(dt$Manufacturer.Market.Share>=0.03, 1, 0)
+
+# I've attemted to calculate Top Seller per Region at first but that proved problematic
+# however, after I tweaked the search URLs and the resulting data set has sample sizes that are somewhat equal,
+# I decided to determine Top Sellers using all the data, but with a lower threshold = 1%
+# define Dummy variable for Top Seller the same way as for the Manufacturer:
+dt$Dummy.Top.Seller <- ifelse(dt$Seller.Market.Share>=0.01, 1, 0)
+
+# now let's create dummy variables for the region
+# since we have 5 regions, we'll need 4 variables (none will represent "Other" region)
+# go through the data table and set to 1 or 0 as needed
+dt$Dummy.Region.Pacific <- ifelse(dt$Region == "Pacific", 1, 0)
+dt$Dummy.Region.GreatLakes <- ifelse(dt$Region == "Great Lakes", 1, 0)
+dt$Dummy.Region.NorthEast <- ifelse(dt$Region == "North East", 1, 0)
+dt$Dummy.Region.SouthEast <- ifelse(dt$Region == "South East", 1, 0)
 
 # feed dt back into df
 df <- dt
 
-
-#Export dataframe "df"
+#Export dataframe "df" as .csv and this will be the file used for all analyses and data vizes.
 write.table(df, file = "boattrader prepped data.csv",append = FALSE, quote = TRUE, sep = ",", row.names = FALSE, col.names = TRUE)
-
-
